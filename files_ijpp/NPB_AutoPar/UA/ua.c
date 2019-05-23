@@ -1,0 +1,432 @@
+//-------------------------------------------------------------------------//
+//                                                                         //
+//  This benchmark is an OpenMP C version of the NPB UA code. This OpenMP  //
+//  C version is developed by the Center for Manycore Programming at Seoul //
+//  National University and derived from the OpenMP Fortran versions in    //
+//  "NPB3.3-OMP" developed by NAS.                                         //
+//                                                                         //
+//  Permission to use, copy, distribute and modify this software for any   //
+//  purpose with or without fee is hereby granted. This software is        //
+//  provided "as is" without express or implied warranty.                  //
+//                                                                         //
+//  Information on NPB 3.3, including the technical report, the original   //
+//  specifications, source code, results and information on how to submit  //
+//  new results, is available at:                                          //
+//                                                                         //
+//           http://www.nas.nasa.gov/Software/NPB/                         //
+//                                                                         //
+//  Send comments or suggestions for this OpenMP C version to              //
+//  cmp@aces.snu.ac.kr                                                     //
+//                                                                         //
+//          Center for Manycore Programming                                //
+//          School of Computer Science and Engineering                     //
+//          Seoul National University                                      //
+//          Seoul 151-744, Korea                                           //
+//                                                                         //
+//          E-mail:  cmp@aces.snu.ac.kr                                    //
+//                                                                         //
+//-------------------------------------------------------------------------//
+//-------------------------------------------------------------------------//
+// Authors: Sangmin Seo, Jungwon Kim, Jun Lee, Jeongho Nah, Gangwon Jo,    //
+//          and Jaejin Lee                                                 //
+//-------------------------------------------------------------------------//
+//---------------------------------------------------------------------
+// program ua
+//---------------------------------------------------------------------
+#include <stdio.h>
+#include <math.h>
+#include "header.h"
+#include "timers.h"
+#include "print_results.h"
+/* common /usrdati/ */
+#include "omp.h" 
+int fre;
+int niter;
+int nmxh;
+/* common /usrdatr/ */
+double alpha;
+double dlmin;
+double dtime;
+/* common /dimn/ */
+int nelt;
+int ntot;
+int nmor;
+int nvertex;
+/* common /bench1/ */
+double x0;
+double _y0;
+double z0;
+double time;
+// double arrays associated with collocation points
+/* common /colldp/ */
+double ta1[33500][5][5][5];
+double ta2[33500][5][5][5];
+double trhs[33500][5][5][5];
+double t[33500][5][5][5];
+double tmult[33500][5][5][5];
+double dpcelm[33500][5][5][5];
+double pdiff[33500][5][5][5];
+double pdiffp[33500][5][5][5];
+// double arays associated with mortar points
+/* common /mortdp/ */
+double umor[1262100];
+double mormult[1262100];
+double tmort[1262100];
+double tmmor[1262100];
+double rmor[1262100];
+double dpcmor[1262100];
+double pmorx[1262100];
+double ppmor[1262100];
+// integer arrays associated with element faces
+/* common/facein/ */
+int idmo[33500][6][2][2][5][5];
+int idel[33500][6][5][5];
+int sje[33500][6][2][2];
+int sje_new[33500][6][2][2];
+int ijel[33500][6][2];
+int ijel_new[33500][6][2];
+int cbc[33500][6];
+int cbc_new[33500][6];
+// integer array associated with vertices
+/* common /vin/ */
+int vassign[33500][8];
+int emo[8 * 33500][8][2];
+int nemo[8 * 33500];
+// integer array associated with element edges
+/* common /edgein/ */
+int diagn[33500][12][2];
+// integer arrays associated with elements
+/* common /eltin/ */
+int tree[33500];
+int treenew[33500];
+int mt_to_id[33500];
+int mt_to_id_old[33500];
+int id_to_mt[33500];
+int newc[33500];
+int newi[33500];
+int newe[33500];
+int ref_front_id[33500];
+int ich[33500];
+int size_e[33500];
+int front[33500];
+int action[33500];
+// logical arrays associated with vertices
+/* common /vlg/ */
+logical ifpcmor[8 * 33500];
+// logical arrays associated with edge
+/* common /edgelg/ */
+logical eassign[33500][12];
+logical ncon_edge[33500][12];
+logical if_1_edge[33500][12];
+// logical arrays associated with elements
+/* common /facelg/ */
+logical skip[33500];
+logical ifcoa[33500];
+logical ifcoa_id[33500];
+// logical arrays associated with element faces
+/* common /masonl/ */
+logical fassign[33500][6];
+logical edgevis[33500][6][4];
+// small arrays
+/* common /transr/ */
+double qbnew[2][5][5 - 2];
+double bqnew[2][5 - 2][5 - 2];
+/* common /pcr/ */
+double pcmor_nc1[8][2][2][5][5];
+double pcmor_nc2[8][2][2][5][5];
+double pcmor_nc0[8][2][2][5][5];
+double pcmor_c[8][5][5];
+double tcpre[5][5];
+double pcmor_cor[8][8];
+// gauss-labotto and gauss points
+/* common /gauss/ */
+double zgm1[5];
+// weights
+/* common /wxyz/ */
+double wxm1[5];
+double w3m1[5][5][5];
+// coordinate of element vertices
+/* common /coord/ */
+double xc[33500][8];
+double yc[33500][8];
+double zc[33500][8];
+double xc_new[33500][8];
+double yc_new[33500][8];
+double zc_new[33500][8];
+// dr/dx, dx/dr  and Jacobian
+/* common /giso/ */
+double jacm1_s[8][5][5][5];
+double rxm1_s[8][5][5][5];
+double xrm1_s[8][5][5][5];
+// mass matrices (diagonal)
+/* common /mass/ */
+double bm1_s[8][5][5][5];
+// dertivative matrices d/dr
+/* common /dxyz/ */
+double dxm1[5][5];
+double dxtm1[5][5];
+double wdtdr[5][5];
+// interpolation operators
+/* common /ixyz/ */
+double ixm31[5 * 2 - 1][5];
+double ixtm31[5][5 * 2 - 1];
+double ixmc1[5][5];
+double ixtmc1[5][5];
+double ixmc2[5][5];
+double ixtmc2[5][5];
+double map2[5];
+double map4[5];
+// collocation location within an element
+/* common /xfracs/ */
+double xfrac[5];
+// used in laplacian operator
+/* common /gmfact/ */
+double g1m1_s[8][5][5][5];
+double g4m1_s[8][5][5][5];
+double g5m1_s[8][5][5][5];
+double g6m1_s[8][5][5][5];
+// We store some tables of useful topological constants
+// These constants are intialized in a block data 'top_constants'
+/* common /top_consts/ */
+int f_e_ef[6][4];
+int e_c[8][3];
+int local_corner[6][8];
+int cal_nnb[8][3];
+int oplc[4];
+int cal_iijj[4][2];
+int cal_intempx[6][4];
+int c_f[6][4];
+int le_arr[3][2][4];
+int jjface[6];
+int e_face2[6][4];
+int op[4];
+int localedgenumber[12][6];
+int edgenumber[6][4];
+int f_c[8][3];
+int e1v1[6][6];
+int e2v1[6][6];
+int e1v2[6][6];
+int e2v2[6][6];
+int children[6][4];
+int iijj[4][2];
+int v_end[2];
+int face_l1[3];
+int face_l2[3];
+int face_ld[3];
+// Timer parameters
+/* common /timing/ */
+logical timeron;
+// Locks used for atomic updates
+/* common /sync_cmn/ */
+omp_lock_t tlock[1262100];
+
+int main(int argc,char *argv[])
+{
+  int step;
+  int ie;
+  int iside;
+  int i;
+  int j;
+  int k;
+  double mflops;
+  double tmax;
+  double nelt_tot = 0.0;
+  char Class;
+  logical ifmortar = false;
+  logical verified;
+  double t2;
+  double trecs[10 + 1];
+  char *t_names[10 + 1];
+//---------------------------------------------------------------------
+// Read input file (if it exists), else take
+// defaults from parameters
+//---------------------------------------------------------------------
+  FILE *fp;
+  if ((fp = fopen("timer.flag","r")) != ((void *)0)) {
+    timeron = true;
+    t_names[1] = "total";
+    t_names[2] = "init";
+    t_names[3] = "convect";
+    t_names[4] = "transfb_c";
+    t_names[5] = "diffusion";
+    t_names[6] = "transf";
+    t_names[7] = "transfb";
+    t_names[8] = "adaptation";
+    t_names[9] = "transf+b";
+    t_names[10] = "add2";
+    fclose(fp);
+  }
+   else {
+    timeron = false;
+  }
+  printf("\n\n NAS Parallel Benchmarks (NPB3.3-OMP-C) - UA Benchmark\n\n");
+  if ((fp = fopen("inputua.data","r")) != ((void *)0)) {
+    int result;
+    printf(" Reading from input file inputua.data\n");
+    result = fscanf(fp,"%d",&fre);
+    while(fgetc(fp) != '\n')
+      ;
+    result = fscanf(fp,"%d",&niter);
+    while(fgetc(fp) != '\n')
+      ;
+    result = fscanf(fp,"%d",&nmxh);
+    while(fgetc(fp) != '\n')
+      ;
+    result = fscanf(fp,"%lf",&alpha);
+    Class = 'U';
+    fclose(fp);
+  }
+   else {
+    printf(" No input file inputua.data. Using compiled defaults\n");
+    fre = 5;
+    niter = 200;
+    nmxh = 10;
+    alpha = 0.067e0;
+    Class = 'C';
+  }
+  dlmin = pow(0.5,8);
+  dtime = 0.04 * dlmin;
+  printf(" Levels of refinement:        %8d\n",8);
+  printf(" Adaptation frequency:        %8d\n",fre);
+  printf(" Time steps:                  %8d    dt: %15.6E\n",niter,dtime);
+  printf(" CG iterations:               %8d\n",nmxh);
+  printf(" Heat source radius:          %8.4f\n",alpha);
+  printf(" Number of available threads: %8d\n",(omp_get_max_threads()));
+  printf("\n");
+  top_constants();
+  for (i = 1; i <= 10; i += 1) {
+    timer_clear(i);
+  }
+  if (timeron) 
+    timer_start(2);
+// set up initial mesh (single element) and solution (all zero)
+  create_initial_grid();
+  r_init_omp(((double *)ta1),ntot,0.0);
+  nr_init_omp(((int *)sje),4 * 6 * nelt,- 1);
+  init_locks();
+// compute tables of coefficients and weights      
+  coef();
+  geom1();
+// compute the discrete laplacian operators
+  setdef();
+// prepare for the preconditioner
+  setpcmo_pre();
+// refine initial mesh and do some preliminary work
+  time = 0.0;
+  mortar();
+  prepwork();
+  adaptation(&ifmortar,0);
+  if (timeron) 
+    timer_stop(2);
+  timer_clear(1);
+  time = 0.0;
+  for (step = 0; step <= niter; step += 1) {
+    if (step == 1) {
+// reset the solution and start the timer, keep track of total no elms
+      r_init(((double *)ta1),ntot,0.0);
+      time = 0.0;
+      nelt_tot = 0.0;
+      for (i = 1; i <= 10; i += 1) {
+        if (i != 2) 
+          timer_clear(i);
+      }
+      timer_start(1);
+    }
+// advance the convection step 
+    convect(ifmortar);
+    if (timeron) 
+      timer_start(9);
+// prepare the intital guess for cg
+    transf(tmort,((double *)ta1));
+// compute residual for diffusion term based on intital guess
+// compute the left hand side of equation, lapacian t
+{
+      for (ie = 0; ie <= nelt - 1; ie += 1) {
+        laplacian(ta2[ie],ta1[ie],size_e[ie]);
+      }
+// compute the residual 
+      
+#pragma omp parallel for private (ie,i,j,k)
+      for (ie = 0; ie <= nelt - 1; ie += 1) {
+        
+#pragma omp parallel for private (i,j,k)
+        for (k = 0; k <= 4; k += 1) {
+          
+#pragma omp parallel for private (i,j)
+          for (j = 0; j <= 4; j += 1) {
+            
+#pragma omp parallel for private (i)
+            for (i = 0; i <= 4; i += 1) {
+              trhs[ie][k][j][i] = trhs[ie][k][j][i] - ta2[ie][k][j][i];
+            }
+          }
+        }
+      }
+//end parallel
+    }
+// get the residual on mortar 
+    transfb(rmor,((double *)trhs));
+    if (timeron) 
+      timer_stop(9);
+// apply boundary condition: zero out the residual on domain boundaries
+// apply boundary conidtion to trhs
+    for (ie = 0; ie <= nelt - 1; ie += 1) {
+      for (iside = 0; iside <= 5; iside += 1) {
+        if (cbc[ie][iside] == 0) {
+          facev(trhs[ie],iside,0.0);
+        }
+      }
+    }
+// apply boundary condition to rmor
+    col2(rmor,tmmor,nmor);
+// call the conjugate gradient iterative solver
+    diffusion(ifmortar);
+// add convection and diffusion
+    if (timeron) 
+      timer_start(10);
+    add2(((double *)ta1),((double *)t),ntot);
+    if (timeron) 
+      timer_stop(10);
+// perform mesh adaptation
+    time = time + dtime;
+    if (step != 0 && step / fre * fre == step) {
+      if (step != niter) {
+        adaptation(&ifmortar,step);
+      }
+    }
+     else {
+      ifmortar = false;
+    }
+    nelt_tot = nelt_tot + ((double )nelt);
+  }
+  timer_stop(1);
+  tmax = timer_read(1);
+  verify(&Class,&verified);
+// compute millions of collocation points advanced per second.
+// diffusion: nmxh advancements, convection: 1 advancement
+  mflops = nelt_tot * ((double )(5 * 5 * 5 * (nmxh + 1))) / (tmax * 1.e6);
+  print_results("UA",Class,8,0,0,niter,tmax,mflops,"    coll. point advanced",verified,"3.3.1","23 Oct 2018","icc","$(CC)","-lm","-I../common","-g -Wall -O3 -qopenmp -mcmodel=medium","-O3 -qopenmp -mcmodel=medium","(none)");
+//---------------------------------------------------------------------
+// More timers
+//---------------------------------------------------------------------
+  if (timeron) {
+    for (i = 1; i <= 10; i += 1) {
+      trecs[i] = timer_read(i);
+    }
+    if (tmax == 0.0) 
+      tmax = 1.0;
+    printf("  SECTION     Time (secs)\n");
+    for (i = 1; i <= 10; i += 1) {
+      printf("  %-10s:%9.3f  (%6.2f%%)\n",t_names[i],trecs[i],trecs[i] * 100. / tmax);
+      if (i == 4) {
+        t2 = trecs[3] - trecs[4];
+        printf("    --> %11s:%9.3f  (%6.2f%%)\n","sub-convect",t2,t2 * 100. / tmax);
+      }
+       else if (i == 7) {
+        t2 = trecs[5] - trecs[6] - trecs[7];
+        printf("    --> %11s:%9.3f  (%6.2f%%)\n","sub-diffuse",t2,t2 * 100. / tmax);
+      }
+    }
+  }
+  return 0;
+}
